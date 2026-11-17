@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { CHAT_MAX_MESSAGE_LENGTH } from '@/lib/constants'
+import { CHAT_MAX_MESSAGE_LENGTH, MAX_ZIP_SIZE } from '@/lib/constants'
 
 const sessionId = z.string().uuid()
 
@@ -71,13 +71,15 @@ export const GrantOwnerSchema = z.object({
 export const RevokeOwnerSchema = z.object({ sessionId })
 
 /**
- * Carries a full base64 ZIP plus an optional yjs state update, so it gets an
- * explicit upper bound rather than the generic 1MB WS message ceiling.
+ * Carries a full base64 ZIP plus an optional yjs state update.
+ * shortcut: sized for base64(MAX_ZIP_SIZE) handoff over WS; chunked transfer would allow a tighter transport cap.
  */
+const MAX_BASE64_ZIP_CHARS = Math.ceil((MAX_ZIP_SIZE * 4) / 3) + 1024 * 1024
+
 export const SendZipSchema = z.object({
   targetUserId: z.string().min(1),
-  zip: z.string().min(1),
-  state: z.string().min(1).optional(),
+  zip: z.string().min(1).max(MAX_BASE64_ZIP_CHARS),
+  state: z.string().min(1).max(MAX_BASE64_ZIP_CHARS).optional(),
 })
 
 export const inboundSchemas = {

@@ -9,6 +9,8 @@ import {
   sendToUser,
   WebSocketErrorCodes,
 } from '@/lib/websocket/errors'
+import { isSafeFilePath, validateFileName } from '@/lib/file-system/security'
+import { getFileName } from '@/lib/file-system/validation'
 import { hasSchema, inboundSchemas } from '@/lib/websocket/validation'
 import { SOCKET_OPEN, type SocketLike } from '@/lib/websocket/types'
 import type { ActivityStatus } from '@/lib/constants'
@@ -36,15 +38,21 @@ export function handleDisconnect(userId: string): void {
 
   session.users.delete(userId)
 
-  // Disconnect is instant removal — no grace period (AGENTS.md §4).
-  if (session.tempOwnerId === userId) {
+  const wasTempOwner = session.tempOwnerId === userId
+  if (wasTempOwner) {
     session.tempOwnerId = undefined
+    broadcastToSession(state, sessionId, 'ownership:revoked', {
+      userId,
+      revokedBy: session.ownerId,
+    })
   }
 
   if (session.ownerId === userId) {
     handleOwnerGone(sessionId, session, 'Main owner disconnected')
     return
   }
+
+  broadcastToSession(state, sessionId, 'user:left', { userId })
 
   if (session.users.size === 0) {
     state.sessions.delete(sessionId)
@@ -186,14 +194,16 @@ function handleJoin(payload: SessionPayload, userId: string): void {
   }
 
   if (session.users.size >= MAX_USERS_PER_SESSION) {
-    sendError(socket, `Session is full (max ${MAX_USERS_PER_SESSION} users)`, WebSocketErrorCodes.SESSION_FULL)
+    sendError(
+      socket,
+      `Session is full (max ${MAX_USERS_PER_SESSION} users)`,
+      WebSocketErrorCodes.SESSION_FULL
+    )
     return
   }
 
   const ownerOnline = state.connections.has(session.ownerId)
-  const tempOwnerOnline = session.tempOwnerId
-    ? state.connections.has(session.tempOwnerId)
-    : false
+  const tempOwnerOnline = session.tempOwnerId ? state.connections.has(session.tempOwnerId) : false
 
   if (!ownerOnline && !tempOwnerOnline) {
     sendError(
@@ -204,12 +214,33 @@ function handleJoin(payload: SessionPayload, userId: string): void {
     return
   }
 
+  const isOwnerJoining = userId === session.ownerId
+  const previousTempOwnerId =
+    isOwnerJoining && session.tempOwnerId && session.tempOwnerId !== session.ownerId
+      ? session.tempOwnerId
+      : undefined
+
   session.users.add(userId)
   state.sessionMap.set(userId, session.id)
 
+  // If the main owner rejoins a session under temp-owner stewardship, reclaim control.
+  if (previousTempOwnerId) {
+    session.tempOwnerId = undefined
+    broadcastToSession(state, session.id, 'ownership:reclaimed', {
+      ownerId: session.ownerId,
+      tempOwnerId: previousTempOwnerId,
+      reason: 'Main owner reconnected',
+    })
+    sendToUser(state.connections, previousTempOwnerId, 'ownership:demoted', {
+      sessionId: session.id,
+      role: 'user',
+      message: 'Main owner reconnected',
+    })
+  }
+
   // The server has no files — borrow them from an existing client.
-  const providerId = ownerOnline ? session.ownerId : session.tempOwnerId!
-  if (providerId) {
+  const providerId = ownerOnline || isOwnerJoining ? session.ownerId : session.tempOwnerId
+  if (providerId && providerId !== userId) {
     sendToUser(state.connections, providerId, 'request:zip', { targetUserId: userId })
   }
 
@@ -239,16 +270,21 @@ function handleLeave(payload: SessionPayload, userId: string): void {
   session.users.delete(userId)
   state.sessionMap.delete(userId)
 
-  if (session.tempOwnerId === userId) {
+  const wasTempOwner = session.tempOwnerId === userId
+  if (wasTempOwner) {
     session.tempOwnerId = undefined
+    broadcastToSession(state, session.id, 'ownership:revoked', {
+      userId,
+      revokedBy: session.ownerId,
+    })
   }
-
-  broadcastToSession(state, session.id, 'user:left', { userId })
 
   if (session.ownerId === userId) {
     handleOwnerGone(session.id, session, 'Main owner left')
     return
   }
+
+  broadcastToSession(state, session.id, 'user:left', { userId })
 
   if (session.users.size === 0) {
     state.sessions.delete(session.id)
@@ -272,10 +308,7 @@ function handleSessionSave(payload: SessionPayload, userId: string): void {
   sendToUser(state.connections, session.ownerId, 'request:save', { sessionId: session.id })
 }
 
-function handleSessionClose(
-  payload: SessionPayload & { save?: boolean },
-  userId: string
-): void {
+function handleSessionClose(payload: SessionPayload & { save?: boolean }, userId: string): void {
   const session = requireMember(payload.sessionId, userId)
   if (!session) return
 
@@ -417,7 +450,11 @@ function handleChat(payload: { sessionId: string; content: string }, userId: str
 
   const last = state.chatCooldowns.get(userId)
   if (last && Date.now() - last.getTime() < CHAT_COOLDOWN) {
-    sendError(socket, 'Please wait before sending another message', WebSocketErrorCodes.CHAT_COOLDOWN)
+    sendError(
+      socket,
+      'Please wait before sending another message',
+      WebSocketErrorCodes.CHAT_COOLDOWN
+    )
     return
   }
 
@@ -435,6 +472,10 @@ function handleChat(payload: { sessionId: string; content: string }, userId: str
 // File operations (owner or temp owner, broadcast to everyone)
 // ─────────────────────────────────────────────────────────────
 
+function isValidFilePath(path: string): boolean {
+  return isSafeFilePath(path) && validateFileName(getFileName(path))
+}
+
 function handleFileCreate(
   payload: { sessionId: string; path: string; content?: string },
   userId: string
@@ -451,6 +492,15 @@ function handleFileCreate(
     return
   }
 
+  if (!isValidFilePath(payload.path)) {
+    sendError(
+      state.connections.get(userId),
+      'Invalid file path',
+      WebSocketErrorCodes.INVALID_PAYLOAD
+    )
+    return
+  }
+
   broadcastToSession(state, payload.sessionId, 'file:created', {
     userId,
     path: payload.path,
@@ -458,10 +508,7 @@ function handleFileCreate(
   })
 }
 
-function handleFileDelete(
-  payload: { sessionId: string; path: string },
-  userId: string
-): void {
+function handleFileDelete(payload: { sessionId: string; path: string }, userId: string): void {
   if (!requireMember(payload.sessionId, userId)) return
 
   const check = checkPermission(payload.sessionId, userId, Permission.DELETE_FILE)
@@ -470,6 +517,15 @@ function handleFileDelete(
       state.connections.get(userId),
       check.error ?? 'Only owners can delete files',
       WebSocketErrorCodes.PERMISSION_DENIED
+    )
+    return
+  }
+
+  if (!isValidFilePath(payload.path)) {
+    sendError(
+      state.connections.get(userId),
+      'Invalid file path',
+      WebSocketErrorCodes.INVALID_PAYLOAD
     )
     return
   }
@@ -492,6 +548,15 @@ function handleFileRename(
       state.connections.get(userId),
       check.error ?? 'Only owners can rename files',
       WebSocketErrorCodes.PERMISSION_DENIED
+    )
+    return
+  }
+
+  if (!isValidFilePath(payload.oldPath) || !isValidFilePath(payload.newPath)) {
+    sendError(
+      state.connections.get(userId),
+      'Invalid file path',
+      WebSocketErrorCodes.INVALID_PAYLOAD
     )
     return
   }
@@ -542,6 +607,19 @@ function handleOwnershipGrant(
     return
   }
 
+  if (session.tempOwnerId) {
+    const previousTempOwnerId = session.tempOwnerId
+    session.tempOwnerId = undefined
+    broadcastToSession(state, payload.sessionId, 'ownership:revoked', {
+      userId: previousTempOwnerId,
+      revokedBy: grantorId,
+    })
+    sendToUser(state.connections, previousTempOwnerId, 'ownership:demoted', {
+      sessionId: payload.sessionId,
+      role: 'user',
+    })
+  }
+
   session.tempOwnerId = payload.userId
 
   broadcastToSession(state, payload.sessionId, 'ownership:granted', {
@@ -555,10 +633,7 @@ function handleOwnershipGrant(
   })
 }
 
-function handleOwnershipRevoke(
-  payload: { sessionId: string },
-  userId: string
-): void {
+function handleOwnershipRevoke(payload: { sessionId: string }, userId: string): void {
   const session = requireMember(payload.sessionId, userId)
   if (!session) return
 
@@ -605,6 +680,28 @@ function handleSendZip(
   const sessionId = state.sessionMap.get(userId)
   if (!sessionId) {
     sendError(socket, 'You are not in a session', WebSocketErrorCodes.NOT_IN_SESSION)
+    return
+  }
+
+  const session = state.sessions.get(sessionId)
+  if (!session) {
+    sendError(socket, 'Session not found', WebSocketErrorCodes.SESSION_NOT_FOUND)
+    return
+  }
+
+  const targetSessionId = state.sessionMap.get(payload.targetUserId)
+  if (!session.users.has(payload.targetUserId) || targetSessionId !== sessionId) {
+    sendError(socket, 'Target user is not in this session', WebSocketErrorCodes.NOT_IN_SESSION)
+    return
+  }
+
+  const providerCheck = checkPermission(sessionId, userId, Permission.SAVE_SESSION)
+  if (!providerCheck.allowed && session.tempOwnerId !== userId) {
+    sendError(
+      socket,
+      'Only an authorized session provider can send session state',
+      WebSocketErrorCodes.PERMISSION_DENIED
+    )
     return
   }
 
@@ -671,9 +768,7 @@ export function startCleanupLoop(): void {
       }
 
       const ownerOnline = state.connections.has(session.ownerId)
-      const tempOnline = session.tempOwnerId
-        ? state.connections.has(session.tempOwnerId)
-        : false
+      const tempOnline = session.tempOwnerId ? state.connections.has(session.tempOwnerId) : false
 
       if (!ownerOnline && !tempOnline) {
         closeSession(sessionId, 'Owner offline and no temp owner')
