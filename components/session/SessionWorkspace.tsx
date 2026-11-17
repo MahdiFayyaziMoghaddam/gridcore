@@ -28,6 +28,7 @@ import { MULTI_TAB_MESSAGE } from '@/lib/constants'
 export function SessionWorkspace({ sessionId }: { sessionId: string }) {
   const { data: authSession } = useAuthSession()
   const setCurrentUser = useSessionStore(state => state.setCurrentUser)
+  const currentSessionId = useSessionStore(state => state.sessionId)
   const sessionName = useSessionStore(state => state.name)
   const lastError = useWebSocketStore(state => state.lastError)
   const activeTab = useUiStore(state => state.activeSidebarTab)
@@ -59,17 +60,22 @@ export function SessionWorkspace({ sessionId }: { sessionId: string }) {
       <main className="flex flex-1 items-center justify-center p-6">
         <div className="max-w-sm space-y-2 text-center">
           <h1 className="text-lg font-semibold">{reason ?? MULTI_TAB_MESSAGE}</h1>
-          <p className="text-sm text-muted">
-            Close the other GridCore tab, then reload this page.
-          </p>
+          <p className="text-sm text-muted">Close the other GridCore tab, then reload this page.</p>
         </div>
       </main>
     )
   }
 
+  const effectiveSessionId = currentSessionId ?? sessionId
+
   return (
-    <WebSocketProvider sessionId={sessionId}>
-      <WorkspaceInner sessionId={sessionId} name={sessionName} activeTab={activeTab} />
+    <WebSocketProvider sessionId={effectiveSessionId}>
+      <WorkspaceInner
+        key={effectiveSessionId}
+        sessionId={effectiveSessionId}
+        name={sessionName}
+        activeTab={activeTab}
+      />
     </WebSocketProvider>
   )
 }

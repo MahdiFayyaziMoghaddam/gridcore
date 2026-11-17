@@ -4,10 +4,14 @@ import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode }
 import { useSession as useAuthSession } from 'next-auth/react'
 import { WebSocketClient } from '@/lib/websocket/client'
 import {
-  getSessionSnapshot,
   applyRemoteUpdate,
+  createFile as yjsCreateFile,
+  deleteFile as yjsDeleteFile,
   encodeState,
+  getFileContent as yjsGetFileContent,
+  getSessionSnapshot,
   observeUpdates,
+  setFileContent as yjsSetFileContent,
 } from '@/lib/collaboration/yjs'
 import { createZip } from '@/lib/storage/zip'
 import { MAX_ZIP_SIZE } from '@/lib/constants'
@@ -15,6 +19,7 @@ import { useWebSocketStore } from '@/stores/wsStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { useEditorStore } from '@/stores/editorStore'
 import { useChatStore } from '@/stores/chatStore'
+import { useFileStore } from '@/stores/fileStore'
 import { useUiStore } from '@/stores/uiStore'
 import type { ClientEventPayloads, ClientEventType, ServerEventType } from '@/types/websocket'
 
@@ -77,6 +82,7 @@ export function WebSocketProvider({
     client.on('session:id-changed', payload => {
       session.setId(payload.newSessionId)
       ui.notify('Session ID changed — old invite links no longer work', 'info')
+      window.history.replaceState(null, '', `/session/${payload.newSessionId}`)
     })
 
     client.on('session:closed', payload => ui.notify(payload.reason, 'info'))
@@ -107,6 +113,28 @@ export function WebSocketProvider({
         { filePath: payload.filePath, ...payload.position },
         session.users.get(payload.userId)?.name
       )
+    })
+
+    client.on('file:created', payload => {
+      const fileStore = useFileStore.getState()
+      fileStore.createFile(payload.path, payload.content ?? '')
+      yjsCreateFile(sessionId, payload.path, payload.content ?? '')
+      if (payload.content) {
+        yjsSetFileContent(sessionId, payload.path, payload.content)
+      }
+    })
+
+    client.on('file:deleted', payload => {
+      useFileStore.getState().deleteFile(payload.path)
+      yjsDeleteFile(sessionId, payload.path)
+    })
+
+    client.on('file:renamed', payload => {
+      const content = yjsGetFileContent(sessionId, payload.oldPath)
+      useFileStore.getState().renameFile(payload.oldPath, payload.newPath)
+      yjsCreateFile(sessionId, payload.newPath, content)
+      yjsSetFileContent(sessionId, payload.newPath, content)
+      yjsDeleteFile(sessionId, payload.oldPath)
     })
 
     client.on('ownership:granted', payload => {

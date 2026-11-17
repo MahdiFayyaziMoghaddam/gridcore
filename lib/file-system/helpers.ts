@@ -198,13 +198,11 @@ export function replaceNode(nodes: FileNode[], path: string, replacement: FileNo
   })
 }
 
-export function updateFileContent(
-  nodes: FileNode[],
-  path: string,
-  content: string
-): FileNode[] {
+export function updateFileContent(nodes: FileNode[], path: string, content: string): FileNode[] {
   const node = findNode(nodes, path)
-  if (!node) return nodes
+  if (!node) {
+    return createFileNode(nodes, path, content)
+  }
 
   return replaceNode(nodes, path, {
     ...node,

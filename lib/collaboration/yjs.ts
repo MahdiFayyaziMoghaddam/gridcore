@@ -139,6 +139,14 @@ export function loadFilesIntoYjs(sessionId: string, files: Record<string, string
   const doc = getDoc(sessionId)
 
   doc.transact(() => {
+    for (const path of getFilePaths(sessionId)) {
+      if (!(path in files)) {
+        const text = doc.getText(fileKey(path))
+        ensureObserved(sessionId, path, text)
+        text.delete(0, text.length)
+      }
+    }
+
     for (const [path, content] of Object.entries(files)) {
       const text = doc.getText(fileKey(path))
       ensureObserved(sessionId, path, text)

@@ -114,7 +114,7 @@ export async function deleteSavedSession(sessionId: string, userId: string): Pro
     throw new ConflictError('Cannot delete active session')
   }
 
-  await storageService.delete(sessionId)
+  await storageService.delete(sessionId, session.zipUrl)
   await sessionQueries.deleteSavedForUser(userId, sessionId)
 
   const remainingLinks = await sessionQueries.countSavedByUser(userId)
