@@ -8,9 +8,9 @@ import {
 
 export interface StorageService {
   upload: (sessionId: string, buffer: Buffer) => Promise<string>
-  download: (sessionId: string) => Promise<Buffer>
-  delete: (sessionId: string) => Promise<void>
-  exists: (sessionId: string) => Promise<boolean>
+  download: (sessionId: string, zipUrl?: string | null) => Promise<Buffer>
+  delete: (sessionId: string, zipUrl?: string | null) => Promise<void>
+  exists: (sessionId: string, zipUrl?: string | null) => Promise<boolean>
 }
 
 class BlobStorageService implements StorageService {
@@ -34,13 +34,10 @@ class BlobStorageService implements StorageService {
     return url
   }
 
-  async download(sessionId: string): Promise<Buffer> {
-    const exists = await this.exists(sessionId)
-    if (!exists) {
-      throw new Error(`Session ${sessionId} not found in storage`)
-    }
-
-    const response = await fetch(this.getPath(sessionId))
+  async download(sessionId: string, zipUrl?: string | null): Promise<Buffer> {
+    const location = zipUrl ?? this.getPath(sessionId)
+    const meta = await head(location)
+    const response = await fetch(meta.downloadUrl || meta.url)
     if (!response.ok) {
       throw new Error(`Failed to download session ${sessionId}`)
     }
@@ -48,14 +45,14 @@ class BlobStorageService implements StorageService {
     return Buffer.from(await response.arrayBuffer())
   }
 
-  async delete(sessionId: string): Promise<void> {
-    await del(this.getPath(sessionId))
+  async delete(sessionId: string, zipUrl?: string | null): Promise<void> {
+    await del(zipUrl ?? this.getPath(sessionId))
   }
 
-  async exists(sessionId: string): Promise<boolean> {
+  async exists(sessionId: string, zipUrl?: string | null): Promise<boolean> {
     try {
-      const result = await head(this.getPath(sessionId))
-      return result !== null
+      await head(zipUrl ?? this.getPath(sessionId))
+      return true
     } catch {
       return false
     }

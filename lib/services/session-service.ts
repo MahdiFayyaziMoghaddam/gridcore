@@ -97,7 +97,7 @@ export async function loadSavedSession(
     throw new ForbiddenError('You do not have access to this session')
   }
 
-  const buffer = await storageService.download(sessionId)
+  const buffer = await storageService.download(sessionId, session.zipUrl)
 
   return { session, zip: buffer.toString('base64') }
 }
@@ -153,7 +153,7 @@ export async function checkSession(sessionId: string): Promise<SessionCheck> {
     exists: true,
     isActive: true,
     userCount: active.users.size,
-    maxUsers: 20,
+    maxUsers: MAX_USERS_PER_SESSION,
     isSaved: active.isSaved,
   }
 }
