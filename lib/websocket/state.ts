@@ -12,17 +12,11 @@ export interface ActiveSession {
   createdAt: Date
 }
 
-export interface RateLimitEntry {
-  count: number
-  resetTime: number
-}
-
 export interface ServerState {
   sessions: Map<string, ActiveSession>
   connections: Map<string, SocketLike>
   /** userId -> sessionId. One session per user, enforced. */
   sessionMap: Map<string, string>
-  rateLimits: Map<string, RateLimitEntry>
   chatCooldowns: Map<string, Date>
 }
 
@@ -30,7 +24,6 @@ export const state: ServerState = {
   sessions: new Map(),
   connections: new Map(),
   sessionMap: new Map(),
-  rateLimits: new Map(),
   chatCooldowns: new Map(),
 }
 
@@ -39,6 +32,5 @@ export function resetServerState(): void {
   state.sessions.clear()
   state.connections.clear()
   state.sessionMap.clear()
-  state.rateLimits.clear()
   state.chatCooldowns.clear()
 }

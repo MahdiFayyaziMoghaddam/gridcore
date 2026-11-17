@@ -1,5 +1,6 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/nextauth'
+import { MAX_WS_MESSAGE_SIZE, MAX_ZIP_SIZE } from '@/lib/constants'
 import {
   handleConnect,
   handleDisconnect,
@@ -60,9 +61,26 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   const onMessage = (data: unknown): void => {
+    let text: string
+    if (typeof data === 'string') {
+      text = data
+    } else if (data instanceof ArrayBuffer) {
+      text = new TextDecoder().decode(data)
+    } else if (ArrayBuffer.isView(data)) {
+      text = new TextDecoder().decode(data)
+    } else {
+      text = String(data)
+    }
+
+    if (text.length > MAX_WS_MESSAGE_SIZE) {
+      const maxSendZipChars = Math.ceil((MAX_ZIP_SIZE * 4) / 3) + 1024 * 1024 + 4096
+      const isSendZip = text.includes('"type":"send:zip"') || text.includes('"type": "send:zip"')
+      if (!isSendZip || text.length > maxSendZipChars) return
+    }
+
     let parsed: unknown
     try {
-      parsed = JSON.parse(typeof data === 'string' ? data : String(data))
+      parsed = JSON.parse(text)
     } catch {
       return
     }
