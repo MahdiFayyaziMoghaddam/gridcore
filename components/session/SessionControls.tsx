@@ -16,7 +16,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useFileSystem } from '@/hooks/useFileSystem'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useSessionActions } from '@/hooks/useSession'
@@ -64,7 +70,7 @@ export function SessionControls() {
       <Button
         variant="outline"
         size="sm"
-        disabled={!permissions.canCreateFile || isImporting}
+        disabled={!permissions.canImportFiles || isImporting}
         onClick={() => fileInput.current?.click()}
         title="Import codebase from a ZIP"
       >
@@ -138,7 +144,9 @@ export function SessionControls() {
                 </DropdownMenuItem>
               </>
             ) : (
-              <DropdownMenuItem onClick={() => setGrantOpen(true)}>Grant Temp Owner</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setGrantOpen(true)}>
+                Grant Temp Owner
+              </DropdownMenuItem>
             )}
           </DropdownMenuContent>
         </DropdownMenu>

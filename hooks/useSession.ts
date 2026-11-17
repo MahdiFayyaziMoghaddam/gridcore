@@ -69,9 +69,37 @@ export function useSessionActions(): UseSessionActions {
     send('session:save', { sessionId })
   }, [permissions.canSaveSession, send, sessionId])
 
-  const exportSession = useCallback(() => {
+  const exportSession = useCallback(async () => {
     if (!permissions.canExportSession) return
-    window.location.href = `/api/sessions/${sessionId}/export`
+
+    const ui = useUiStore.getState()
+    ui.setExporting(true)
+
+    try {
+      const { createZip } = await import('@/lib/storage/zip')
+      const { getSessionSnapshot } = await import('@/lib/collaboration/yjs')
+      const { downloadBlob } = await import('@/lib/file-system/import')
+      const { MAX_ZIP_SIZE } = await import('@/lib/constants')
+
+      const blob = await createZip(getSessionSnapshot(sessionId))
+
+      if (blob.size === 0) {
+        ui.notify('No files to export', 'error')
+        return
+      }
+
+      if (blob.size > MAX_ZIP_SIZE) {
+        ui.notify(`Export exceeds the ${MAX_ZIP_SIZE / 1024 / 1024}MB limit`, 'error')
+        return
+      }
+
+      downloadBlob(blob, `${sessionId}.zip`)
+      ui.notify('Export ready', 'success')
+    } catch {
+      ui.notify('Export failed', 'error')
+    } finally {
+      ui.setExporting(false)
+    }
   }, [permissions.canExportSession, sessionId])
 
   const closeSession = useCallback(

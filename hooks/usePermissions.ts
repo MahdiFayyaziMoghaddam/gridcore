@@ -7,7 +7,8 @@ export interface Permissions {
   canCreateFile: boolean
   canDeleteFile: boolean
   canRenameFile: boolean
-  canEdit: boolean
+  canEditContent: boolean
+  canImportFiles: boolean
   canSaveSession: boolean
   canExportSession: boolean
   canChangeSessionId: boolean
@@ -37,14 +38,14 @@ export function usePermissions(): Permissions {
       canCreateFile: canEditFiles,
       canDeleteFile: canEditFiles,
       canRenameFile: canEditFiles,
-      // Editing file contents is open to every session member.
-      canEdit: true,
+      canEditContent: !!currentUserId,
+      canImportFiles: canEditFiles,
       canSaveSession: isOwner,
       canExportSession: isOwner,
       canChangeSessionId: isOwner,
       canGrantTempOwner: isOwner,
       canRevokeTempOwner: isOwner,
-      canCloseSession: canEditFiles,
+      canCloseSession: isOwner || isTempOwner,
       isOwner,
       isTempOwner,
       isRegularUser: !canEditFiles,

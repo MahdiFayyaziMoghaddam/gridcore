@@ -36,11 +36,18 @@ export interface UseFileSystemReturn {
 
 /**
  * Every mutation is dual-write: local store first, then yjs, then broadcast.
- * The `canEdit` guard is the client-side half of the permission model.
+ * Guards follow the canonical permission model (server remains authoritative).
  */
 export function useFileSystem(): UseFileSystemReturn {
   const { sessionId, send } = useWebSocket()
-  const { canEdit } = usePermissions()
+  const {
+    canCreateFile,
+    canDeleteFile,
+    canRenameFile,
+    canEditContent,
+    canImportFiles,
+    canExportSession,
+  } = usePermissions()
 
   const files = useFileStore(state => state.files)
   const openFiles = useFileStore(state => state.openFiles)
@@ -50,36 +57,36 @@ export function useFileSystem(): UseFileSystemReturn {
 
   const create = useCallback(
     (path: string, content = '') => {
-      if (!canEdit) return
+      if (!canCreateFile) return
       store().createFile(path, content)
       yjsCreateFile(sessionId, path, content)
       send('file:create', { sessionId, path, content })
     },
-    [canEdit, send, sessionId]
+    [canCreateFile, send, sessionId]
   )
 
   const createFolder = useCallback(
     (path: string) => {
-      if (!canEdit) return
+      if (!canCreateFile) return
       store().createFolder(path)
       send('file:create', { sessionId, path, content: '' })
     },
-    [canEdit, send, sessionId]
+    [canCreateFile, send, sessionId]
   )
 
   const remove = useCallback(
     (path: string) => {
-      if (!canEdit) return
+      if (!canDeleteFile) return
       store().deleteFile(path)
       yjsDeleteFile(sessionId, path)
       send('file:delete', { sessionId, path })
     },
-    [canEdit, send, sessionId]
+    [canDeleteFile, send, sessionId]
   )
 
   const rename = useCallback(
     (oldPath: string, newPath: string) => {
-      if (!canEdit) return
+      if (!canRenameFile) return
 
       const content = getSessionSnapshot(sessionId)[oldPath] ?? ''
       store().renameFile(oldPath, newPath)
@@ -87,24 +94,24 @@ export function useFileSystem(): UseFileSystemReturn {
       yjsDeleteFile(sessionId, oldPath)
       send('file:rename', { sessionId, oldPath, newPath })
     },
-    [canEdit, send, sessionId]
+    [canRenameFile, send, sessionId]
   )
 
   // Monaco edits land here: yjs holds the truth, the store mirrors it.
   const updateContent = useCallback(
     (path: string, content: string) => {
-      if (!canEdit) return
+      if (!canEditContent) return
       yjsSetFileContent(sessionId, path, content)
       store().setDirty(true)
     },
-    [canEdit, sessionId]
+    [canEditContent, sessionId]
   )
 
   const importZip = useCallback(
     async (file: File) => {
       const ui = useUiStore.getState()
 
-      if (!canEdit) {
+      if (!canImportFiles) {
         ui.notify('You do not have permission to import files', 'error')
         return
       }
@@ -112,7 +119,7 @@ export function useFileSystem(): UseFileSystemReturn {
       ui.setImporting(true)
 
       try {
-        const result = await importZipFile(file, file.name, { canEdit })
+        const result = await importZipFile(file, file.name, { canEdit: true })
 
         for (const error of result.errors) {
           ui.notify(error.message, 'error')
@@ -141,14 +148,14 @@ export function useFileSystem(): UseFileSystemReturn {
         ui.setImporting(false)
       }
     },
-    [canEdit, send, sessionId]
+    [canImportFiles, send, sessionId]
   )
 
   const exportZip = useCallback(
     async (filename = 'codebase.zip') => {
       const ui = useUiStore.getState()
 
-      if (!canEdit) {
+      if (!canExportSession) {
         ui.notify('You do not have permission to export files', 'error')
         return
       }
@@ -175,7 +182,7 @@ export function useFileSystem(): UseFileSystemReturn {
         ui.setExporting(false)
       }
     },
-    [canEdit, sessionId]
+    [canExportSession, sessionId]
   )
 
   return {
