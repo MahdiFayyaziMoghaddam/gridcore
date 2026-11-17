@@ -51,17 +51,18 @@ export const useSessionStore = create<SessionStore>()(
       setUsers: users =>
         set({
           users: new Map(
-            users.map(user => [
-              user.id,
-              { ...user, color: user.color ?? getUserColor(user.id) },
-            ])
+            users.map(user => [user.id, { ...user, color: user.color ?? getUserColor(user.id) }])
           ),
         }),
 
       addUser: user =>
         set(prev => {
           const users = new Map(prev.users)
-          users.set(user.id, { ...user, color: user.color ?? getUserColor(user.id) })
+          users.set(user.id, {
+            ...user,
+            color: user.color ?? getUserColor(user.id),
+            isOnline: user.isOnline ?? true,
+          })
           return { users }
         }),
 
