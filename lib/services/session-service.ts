@@ -1,5 +1,11 @@
 import { randomUUID } from 'node:crypto'
-import { MAX_ZIP_SIZE, MAX_SESSION_NAME_LENGTH, SESSION_NAME_FALLBACK_PREFIX } from '@/lib/constants'
+import {
+  MAX_SAVED_SESSIONS_PER_USER,
+  MAX_SESSION_NAME_LENGTH,
+  MAX_USERS_PER_SESSION,
+  MAX_ZIP_SIZE,
+  SESSION_NAME_FALLBACK_PREFIX,
+} from '@/lib/constants'
 import { sessionQueries } from '@/lib/db/queries/sessions'
 import {
   ConflictError,
@@ -13,7 +19,6 @@ import { storageService } from '@/lib/storage/blob'
 import { markSessionSaved } from '@/lib/websocket/server'
 import { state, type ActiveSession } from '@/lib/websocket/state'
 import type { SessionRow } from '@/lib/db/schema'
-import { MAX_SAVED_SESSIONS_PER_USER } from '@/lib/constants'
 
 function fallbackName(): string {
   return `${SESSION_NAME_FALLBACK_PREFIX}${Math.random().toString(36).slice(2, 8)}`
