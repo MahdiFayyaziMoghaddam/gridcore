@@ -726,11 +726,12 @@ function handleSendZip(
     return
   }
 
-  const providerCheck = checkPermission(sessionId, userId, Permission.SAVE_SESSION)
-  if (!providerCheck.allowed && session.tempOwnerId !== userId) {
+  const ownerOnline = state.connections.has(session.ownerId)
+  const expectedProviderId = ownerOnline ? session.ownerId : session.tempOwnerId
+  if (userId !== expectedProviderId) {
     sendError(
       socket,
-      'Only an authorized session provider can send session state',
+      'Only the authorized session provider can send session state',
       WebSocketErrorCodes.PERMISSION_DENIED
     )
     return
