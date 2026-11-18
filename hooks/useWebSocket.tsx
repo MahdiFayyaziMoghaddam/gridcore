@@ -288,18 +288,21 @@ export function WebSocketProvider({
     // New joiner received the codebase — hydrate from the shared yjs state.
     client.on('receive:zip', async payload => {
       try {
-        // The state update carries full history, so subsequent incremental
-        // diffs from this peer merge correctly. Without it CRDT sync breaks.
+        let files: Record<string, string> | null = null
+        if (payload.zip) {
+          const { extractZip } = await import('@/lib/storage/zip')
+          files = (await extractZip(new Blob([base64ToBuffer(payload.zip)]))).files
+        }
+
+        // The state update carries full history, so subsequent incremental diffs merge correctly.
         if (payload.state) {
           applyRemoteUpdate(collabSessionId, new Uint8Array(base64ToBuffer(payload.state)))
-          useFileStore.getState().loadFromMap(getSessionSnapshot(collabSessionId))
-        } else {
-          const { extractZip } = await import('@/lib/storage/zip')
+        } else if (files) {
           const { loadFilesIntoYjs } = await import('@/lib/collaboration/yjs')
-          const { files } = await extractZip(new Blob([base64ToBuffer(payload.zip)]))
           loadFilesIntoYjs(collabSessionId, files)
-          useFileStore.getState().loadFromMap(files)
         }
+
+        useFileStore.getState().loadFromMap(files ?? getSessionSnapshot(collabSessionId))
       } catch {
         ui.notify('Could not load the session codebase', 'error')
       }
