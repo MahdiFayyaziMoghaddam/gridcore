@@ -303,6 +303,7 @@ export function WebSocketProvider({
         // The state update carries full history, so subsequent incremental diffs merge correctly.
         if (payload.state) {
           applyRemoteUpdate(collabSessionId, new Uint8Array(base64ToBuffer(payload.state)))
+          files = getSessionSnapshot(collabSessionId)
         } else if (files) {
           const { loadFilesIntoYjs } = await import('@/lib/collaboration/yjs')
           loadFilesIntoYjs(collabSessionId, files)
