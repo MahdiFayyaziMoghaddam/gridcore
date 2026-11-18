@@ -462,6 +462,14 @@ function handleStatus(
   broadcastToSession(
     state,
     payload.sessionId,
+    'user:status',
+    { userId, status: payload.status },
+    [userId]
+  )
+
+  broadcastToSession(
+    state,
+    payload.sessionId,
     'user:file',
     { userId, filePath: payload.filePath },
     [userId]
