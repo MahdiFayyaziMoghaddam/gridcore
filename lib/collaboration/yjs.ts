@@ -16,6 +16,16 @@ const listeners = new Map<string, Set<Listener>>()
 /** Y.Text instances we've already bound an observer to, keyed by session+path. */
 const observed = new Map<string, Set<Y.Text>>()
 const shareWatchers = new Map<string, () => void>()
+const tombstones = new Map<string, Set<string>>()
+
+function tombstonesFor(sessionId: string): Set<string> {
+  let set = tombstones.get(sessionId)
+  if (!set) {
+    set = new Set()
+    tombstones.set(sessionId, set)
+  }
+  return set
+}
 
 export function fileKey(path: string): string {
   return `${FILE_PREFIX}${path}`
@@ -117,6 +127,7 @@ export function observeFile(sessionId: string, listener: Listener): () => void {
 /** Replace the whole text — used by imports, renames and the initial load. */
 export function setFileContent(sessionId: string, path: string, content: string): void {
   const text = getFileText(sessionId, path)
+  tombstonesFor(sessionId).delete(path)
 
   getDoc(sessionId).transact(() => {
     text.delete(0, text.length)
@@ -127,6 +138,7 @@ export function setFileContent(sessionId: string, path: string, content: string)
 /** Same-file simultaneous create is first-one-wins, silently (AGENTS.md §6). */
 export function createFile(sessionId: string, path: string, content = ''): boolean {
   const text = getFileText(sessionId, path)
+  tombstonesFor(sessionId).delete(path)
   if (text.length > 0) return false
 
   getDoc(sessionId).transact(() => {
@@ -141,6 +153,7 @@ export function deleteFile(sessionId: string, path: string): void {
   const doc = getDoc(sessionId)
   if (!doc.share.has(key)) return
   const text = doc.getText(key)
+  tombstonesFor(sessionId).add(path)
   doc.transact(() => {
     text.delete(0, text.length)
   })
@@ -150,8 +163,10 @@ export function deleteFile(sessionId: string, path: string): void {
 export function getSessionSnapshot(sessionId: string): Record<string, string> {
   const doc = getDoc(sessionId)
   const snapshot: Record<string, string> = {}
+  const deleted = tombstonesFor(sessionId)
 
   for (const path of getFilePaths(sessionId)) {
+    if (deleted.has(path)) continue
     snapshot[path] = doc.getText(fileKey(path)).toString()
   }
 
@@ -160,10 +175,12 @@ export function getSessionSnapshot(sessionId: string): Record<string, string> {
 
 export function loadFilesIntoYjs(sessionId: string, files: Record<string, string>): void {
   const doc = getDoc(sessionId)
+  const deleted = tombstonesFor(sessionId)
 
   doc.transact(() => {
     for (const path of getFilePaths(sessionId)) {
       if (!(path in files)) {
+        deleted.add(path)
         const text = doc.getText(fileKey(path))
         ensureObserved(sessionId, path, text)
         text.delete(0, text.length)
@@ -171,6 +188,7 @@ export function loadFilesIntoYjs(sessionId: string, files: Record<string, string
     }
 
     for (const [path, content] of Object.entries(files)) {
+      deleted.delete(path)
       const text = doc.getText(fileKey(path))
       ensureObserved(sessionId, path, text)
       text.delete(0, text.length)
@@ -201,6 +219,7 @@ export function destroyDocument(sessionId: string): void {
   docs.delete(sessionId)
   listeners.delete(sessionId)
   observed.delete(sessionId)
+  tombstones.delete(sessionId)
 }
 
 // ─────────────────────────────────────────────────────────────
