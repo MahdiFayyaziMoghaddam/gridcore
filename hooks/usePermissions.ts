@@ -28,11 +28,13 @@ export function usePermissions(): Permissions {
   const ownerId = useSessionStore(state => state.ownerId)
   const tempOwnerId = useSessionStore(state => state.tempOwnerId)
   const currentUserId = useSessionStore(state => state.currentUserId)
+  const users = useSessionStore(state => state.users)
 
   return useMemo(() => {
     const isOwner = !!currentUserId && ownerId === currentUserId
     const isTempOwner = !isOwner && !!currentUserId && tempOwnerId === currentUserId
     const canEditFiles = isOwner || isTempOwner
+    const ownerOnline = !!ownerId && users.has(ownerId)
 
     return {
       canCreateFile: canEditFiles,
@@ -45,12 +47,12 @@ export function usePermissions(): Permissions {
       canChangeSessionId: isOwner,
       canGrantTempOwner: isOwner,
       canRevokeTempOwner: isOwner,
-      canCloseSession: isOwner || isTempOwner,
+      canCloseSession: isOwner || (isTempOwner && !ownerOnline),
       isOwner,
       isTempOwner,
       isRegularUser: !canEditFiles,
     }
-  }, [ownerId, tempOwnerId, currentUserId])
+  }, [ownerId, tempOwnerId, currentUserId, users])
 }
 
 export { selectCanEditFiles, selectIsOwner }
