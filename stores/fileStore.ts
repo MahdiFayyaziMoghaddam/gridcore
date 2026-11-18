@@ -1,6 +1,15 @@
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
-import { buildTree, createFileNode, deleteFileNode, findNode, renameFileNode, sortTree, treeToMap, updateFileContent } from '@/lib/file-system/helpers'
+import {
+  buildTree,
+  createFileNode,
+  deleteFileNode,
+  findNode,
+  renameFileNode,
+  sortTree,
+  treeToMap,
+  updateFileContent,
+} from '@/lib/file-system/helpers'
 import type { FileNode } from '@/types/file'
 
 interface FileStore {
@@ -102,7 +111,13 @@ export const useFileStore = create<FileStore>()(
           const activeFile =
             prev.activeFile === path ? (openFiles[openFiles.length - 1] ?? null) : prev.activeFile
 
-          return { files: deleteFileNode(prev.files, path), fileContents, openFiles, activeFile, isDirty: true }
+          return {
+            files: deleteFileNode(prev.files, path),
+            fileContents,
+            openFiles,
+            activeFile,
+            isDirty: true,
+          }
         }),
 
       renameFile: (oldPath, newPath) =>
@@ -114,10 +129,13 @@ export const useFileStore = create<FileStore>()(
               fileContents.set(node.path, node.content ?? prev.fileContents.get(node.path) ?? '')
             }
           }
-          const openFiles = prev.openFiles.map(file =>
-            file === oldPath ? newPath : file
-          )
-          const activeFile = prev.activeFile === oldPath ? newPath : prev.activeFile
+          const rebasePath = (path: string): string => {
+            if (path === oldPath) return newPath
+            if (path.startsWith(`${oldPath}/`)) return `${newPath}${path.slice(oldPath.length)}`
+            return path
+          }
+          const openFiles = prev.openFiles.map(rebasePath)
+          const activeFile = prev.activeFile ? rebasePath(prev.activeFile) : null
           return { files, fileContents, openFiles, activeFile, isDirty: true }
         }),
 

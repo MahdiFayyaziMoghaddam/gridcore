@@ -88,10 +88,21 @@ export function useFileSystem(): UseFileSystemReturn {
     (oldPath: string, newPath: string) => {
       if (!canRenameFile) return
 
-      const content = getSessionSnapshot(sessionId)[oldPath] ?? ''
+      const snapshot = getSessionSnapshot(sessionId)
+      const affectedPaths = Object.keys(snapshot).filter(
+        path => path === oldPath || path.startsWith(`${oldPath}/`)
+      )
+
       store().renameFile(oldPath, newPath)
-      yjsCreateFile(sessionId, newPath, content)
-      yjsDeleteFile(sessionId, oldPath)
+
+      for (const path of affectedPaths) {
+        const nextPath = path === oldPath ? newPath : `${newPath}${path.slice(oldPath.length)}`
+        const content = snapshot[path] ?? ''
+        yjsCreateFile(sessionId, nextPath, content)
+        yjsSetFileContent(sessionId, nextPath, content)
+        yjsDeleteFile(sessionId, path)
+      }
+
       send('file:rename', { sessionId, oldPath, newPath })
     },
     [canRenameFile, send, sessionId]

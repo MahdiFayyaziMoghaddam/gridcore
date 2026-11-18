@@ -130,11 +130,23 @@ export function WebSocketProvider({
     })
 
     client.on('file:renamed', payload => {
-      const content = yjsGetFileContent(sessionId, payload.oldPath)
+      const snapshot = getSessionSnapshot(sessionId)
+      const affectedPaths = Object.keys(snapshot).filter(
+        path => path === payload.oldPath || path.startsWith(`${payload.oldPath}/`)
+      )
+
       useFileStore.getState().renameFile(payload.oldPath, payload.newPath)
-      yjsCreateFile(sessionId, payload.newPath, content)
-      yjsSetFileContent(sessionId, payload.newPath, content)
-      yjsDeleteFile(sessionId, payload.oldPath)
+
+      for (const path of affectedPaths) {
+        const nextPath =
+          path === payload.oldPath
+            ? payload.newPath
+            : `${payload.newPath}${path.slice(payload.oldPath.length)}`
+        const content = snapshot[path] ?? ''
+        yjsCreateFile(sessionId, nextPath, content)
+        yjsSetFileContent(sessionId, nextPath, content)
+        yjsDeleteFile(sessionId, path)
+      }
     })
 
     client.on('ownership:granted', payload => {
