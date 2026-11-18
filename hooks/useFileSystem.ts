@@ -133,7 +133,7 @@ export function useFileSystem(): UseFileSystemReturn {
       ui.setImporting(true)
 
       try {
-        const result = await importZipFile(file, file.name, { canEdit: true })
+        const result = await importZipFile(file, file.name, { canEdit: canImportFiles })
 
         for (const error of result.errors) {
           ui.notify(error.message, 'error')
