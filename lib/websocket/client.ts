@@ -27,6 +27,10 @@ export class WebSocketClient {
     this.options = options
   }
 
+  setSessionId(sessionId: string): void {
+    this.options.sessionId = sessionId
+  }
+
   get isConnected(): boolean {
     return this.socket?.readyState === WebSocket.OPEN
   }
@@ -90,10 +94,7 @@ export class WebSocketClient {
     }, RECONNECT_DELAY)
   }
 
-  send<T extends ClientEventType>(
-    type: T,
-    payload: ClientEventPayloads[T]
-  ): boolean {
+  send<T extends ClientEventType>(type: T, payload: ClientEventPayloads[T]): boolean {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return false
 
     this.socket.send(JSON.stringify({ type, payload, timestamp: Date.now() }))

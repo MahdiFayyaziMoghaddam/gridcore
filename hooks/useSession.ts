@@ -48,12 +48,14 @@ export function useSessionActions(): UseSessionActions {
   const joinSession = useCallback(
     async (targetId: string) => {
       const response = await fetch(`/api/sessions/check/${targetId}`)
-      const result = (await response.json()) as {
-        exists: boolean
-        isActive: boolean
+      const result = (await response.json().catch(() => ({}))) as {
+        exists?: boolean
+        isActive?: boolean
         reason?: string
+        error?: string
       }
 
+      if (!response.ok) throw new Error(result.error ?? 'Failed to check session')
       if (!result.exists) throw new Error('Session not found')
       if (!result.isActive) throw new Error(result.reason ?? 'Session is not active')
 
@@ -64,8 +66,7 @@ export function useSessionActions(): UseSessionActions {
 
   const saveSession = useCallback(() => {
     if (!permissions.canSaveSession) return
-    useUiStore.getState().setSaving(true)
-    // The server answers with request:save; the provider does the work.
+    // request:save triggers provider-side saving and manages isSaving state.
     send('session:save', { sessionId })
   }, [permissions.canSaveSession, send, sessionId])
 
@@ -105,10 +106,8 @@ export function useSessionActions(): UseSessionActions {
   const closeSession = useCallback(
     (save: boolean) => {
       send('session:close', { sessionId, save })
-      useSessionStore.getState().clearSession()
-      router.push(ROUTES.sessions)
     },
-    [router, send, sessionId]
+    [send, sessionId]
   )
 
   const changeSessionId = useCallback(() => {

@@ -100,6 +100,7 @@ export function WebSocketProvider({
     client.on('session:saved', () => session.setIsSaved(true))
 
     client.on('session:id-changed', payload => {
+      client.setSessionId(payload.newSessionId)
       activeSessionIdRef.current = payload.newSessionId
       setActiveSessionId(payload.newSessionId)
       session.setId(payload.newSessionId)
@@ -107,7 +108,12 @@ export function WebSocketProvider({
       window.history.replaceState(null, '', `/session/${payload.newSessionId}`)
     })
 
-    client.on('session:closed', payload => ui.notify(payload.reason, 'info'))
+    client.on('session:closed', payload => {
+      useSessionStore.getState().clearSession()
+      ui.notify(payload.reason, 'info')
+      client.disconnect()
+      window.location.assign('/sessions')
+    })
 
     client.on('user:joined', payload => {
       session.addUser({
