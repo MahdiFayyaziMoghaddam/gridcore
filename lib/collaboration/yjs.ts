@@ -15,6 +15,7 @@ const docs = new Map<string, Y.Doc>()
 const listeners = new Map<string, Set<Listener>>()
 /** Y.Text instances we've already bound an observer to, keyed by session+path. */
 const observed = new Map<string, Set<Y.Text>>()
+const shareWatchers = new Map<string, () => void>()
 
 export function fileKey(path: string): string {
   return `${FILE_PREFIX}${path}`
@@ -47,12 +48,15 @@ function ensureObserved(sessionId: string, path: string, text: Y.Text): void {
   if (set.has(text)) return
   set.add(text)
 
-  text.observe(() => {
+  const emit = () => {
     const content = text.toString()
     for (const listener of listeners.get(sessionId) ?? []) {
       listener(path, content)
     }
-  })
+  }
+
+  text.observe(emit)
+  emit()
 }
 
 function getFileText(sessionId: string, path: string): Y.Text {
@@ -83,13 +87,28 @@ export function observeFile(sessionId: string, listener: Listener): () => void {
   }
   set.add(listener)
 
-  // Bind any files that already exist so late subscribers still get updates.
-  for (const path of getFilePaths(sessionId)) {
-    getFileText(sessionId, path)
+  const bindAll = () => {
+    for (const path of getFilePaths(sessionId)) {
+      getFileText(sessionId, path)
+    }
+  }
+
+  bindAll()
+
+  if (!shareWatchers.has(sessionId)) {
+    const doc = getDoc(sessionId)
+    const onUpdate = () => bindAll()
+    doc.on('update', onUpdate)
+    shareWatchers.set(sessionId, () => doc.off('update', onUpdate))
   }
 
   return () => {
     set.delete(listener)
+    if (set.size === 0) {
+      listeners.delete(sessionId)
+      shareWatchers.get(sessionId)?.()
+      shareWatchers.delete(sessionId)
+    }
   }
 }
 
@@ -116,11 +135,16 @@ export function createFile(sessionId: string, path: string, content = ''): boole
 }
 
 export function deleteFile(sessionId: string, path: string): void {
-  const text = getFileText(sessionId, path)
+  const key = fileKey(path)
+  const doc = getDoc(sessionId)
+  if (!doc.share.has(key)) return
 
-  getDoc(sessionId).transact(() => {
+  const text = doc.getText(key)
+  doc.transact(() => {
     text.delete(0, text.length)
   })
+  doc.share.delete(key)
+  observedFor(sessionId).delete(text)
 }
 
 /** Full path -> content snapshot. This is what the owner packages into a ZIP. */
@@ -141,9 +165,12 @@ export function loadFilesIntoYjs(sessionId: string, files: Record<string, string
   doc.transact(() => {
     for (const path of getFilePaths(sessionId)) {
       if (!(path in files)) {
-        const text = doc.getText(fileKey(path))
+        const key = fileKey(path)
+        const text = doc.getText(key)
         ensureObserved(sessionId, path, text)
         text.delete(0, text.length)
+        doc.share.delete(key)
+        observedFor(sessionId).delete(text)
       }
     }
 
@@ -172,6 +199,8 @@ export function checkDocumentSize(sessionId: string): boolean {
 }
 
 export function destroyDocument(sessionId: string): void {
+  shareWatchers.get(sessionId)?.()
+  shareWatchers.delete(sessionId)
   docs.get(sessionId)?.destroy()
   docs.delete(sessionId)
   listeners.delete(sessionId)

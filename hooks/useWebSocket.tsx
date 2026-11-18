@@ -73,6 +73,7 @@ export function WebSocketProvider({
 
     client.on('session:state', payload => {
       session.setSession(payload)
+      session.setUsers(payload.users ?? [])
       session.setIsSaved(payload.isSaved)
       session.setTempOwner(payload.tempOwnerId ?? null)
     })
@@ -90,7 +91,7 @@ export function WebSocketProvider({
     client.on('user:joined', payload => {
       session.addUser({
         id: payload.userId,
-        name: payload.userName ?? 'Unknown',
+        name: payload.userName ?? payload.userId,
         color: payload.color,
         isOnline: true,
       })
@@ -116,6 +117,7 @@ export function WebSocketProvider({
     })
 
     client.on('file:created', payload => {
+      if (payload.userId === currentUserId) return
       const fileStore = useFileStore.getState()
       fileStore.createFile(payload.path, payload.content ?? '')
       yjsCreateFile(sessionId, payload.path, payload.content ?? '')
@@ -125,11 +127,13 @@ export function WebSocketProvider({
     })
 
     client.on('file:deleted', payload => {
+      if (payload.userId === currentUserId) return
       useFileStore.getState().deleteFile(payload.path)
       yjsDeleteFile(sessionId, payload.path)
     })
 
     client.on('file:renamed', payload => {
+      if (payload.userId === currentUserId) return
       const snapshot = getSessionSnapshot(sessionId)
       const affectedPaths = Object.keys(snapshot).filter(
         path => path === payload.oldPath || path.startsWith(`${payload.oldPath}/`)
@@ -154,14 +158,29 @@ export function WebSocketProvider({
       ui.notify('Temporary ownership granted', 'success')
     })
 
+    client.on('ownership:promoted', payload => {
+      if (payload.role === 'temp_owner') session.setTempOwner(currentUserId ?? null)
+      ui.notify(payload.message ?? 'Ownership updated', 'info')
+    })
+
     client.on('ownership:revoked', () => {
       session.setTempOwner(null)
       ui.notify('Temporary ownership revoked', 'info')
     })
 
+    client.on('ownership:demoted', () => {
+      session.setTempOwner(null)
+      ui.notify('Temporary ownership removed', 'info')
+    })
+
     client.on('ownership:transferred', payload => {
-      ui.notify(`Session is now held by a temp owner`, 'info')
-      void payload
+      session.setTempOwner(payload.tempOwnerId)
+      ui.notify(payload.reason ?? 'Session is now held by a temp owner', 'info')
+    })
+
+    client.on('ownership:reclaimed', payload => {
+      session.setTempOwner(null)
+      ui.notify(payload.reason ?? 'Main owner reconnected', 'info')
     })
 
     client.on('chat', payload => {
@@ -192,36 +211,45 @@ export function WebSocketProvider({
     })
 
     client.on('request:save', async payload => {
-      const snapshot = getSessionSnapshot(sessionId)
-      const blob = await createZip(snapshot)
+      const uiState = useUiStore.getState()
+      uiState.setSaving(true)
+      try {
+        const snapshot = getSessionSnapshot(sessionId)
+        const blob = await createZip(snapshot)
 
-      if (blob.size > MAX_ZIP_SIZE) {
-        ui.notify('Session exceeds the 50MB limit', 'error')
-        return
-      }
+        if (blob.size > MAX_ZIP_SIZE) {
+          ui.notify('Session exceeds the 50MB limit', 'error')
+          return
+        }
 
-      const zip = await blobToBase64(blob)
-      const response = await fetch(`/api/sessions/${sessionId}/save`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ zip }),
-      })
+        const zip = await blobToBase64(blob)
+        const response = await fetch(`/api/sessions/${sessionId}/save`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ zip }),
+        })
 
-      if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as { error?: string }
-        ui.notify(body.error ?? 'Save failed', 'error')
-        return
-      }
+        if (!response.ok) {
+          const body = (await response.json().catch(() => ({}))) as { error?: string }
+          ui.notify(body.error ?? 'Save failed', 'error')
+          return
+        }
 
-      session.setIsSaved(true)
-      ui.notify('Session saved', 'success')
+        session.setIsSaved(true)
+        ui.notify('Session saved', 'success')
 
-      if (payload.closeAfterSave) {
-        client.send('session:close', { sessionId, save: false })
+        if (payload.closeAfterSave) {
+          client.send('session:close', { sessionId, save: false })
+        }
+      } finally {
+        useUiStore.getState().setSaving(false)
       }
     })
 
-    client.on('error', payload => ui.notify(payload.error, 'error'))
+    client.on('error', payload => {
+      ui.notify(payload.error, 'error')
+      useWebSocketStore.getState().setError(payload.error)
+    })
 
     // New joiner received the codebase — hydrate from the shared yjs state.
     client.on('receive:zip', async payload => {
@@ -230,13 +258,13 @@ export function WebSocketProvider({
         // diffs from this peer merge correctly. Without it CRDT sync breaks.
         if (payload.state) {
           applyRemoteUpdate(sessionId, new Uint8Array(base64ToBuffer(payload.state)))
-          return
+        } else {
+          const { extractZip } = await import('@/lib/storage/zip')
+          const { loadFilesIntoYjs } = await import('@/lib/collaboration/yjs')
+          const { files } = await extractZip(new Blob([base64ToBuffer(payload.zip)]))
+          loadFilesIntoYjs(sessionId, files)
         }
-
-        const { extractZip } = await import('@/lib/storage/zip')
-        const { loadFilesIntoYjs } = await import('@/lib/collaboration/yjs')
-        const { files } = await extractZip(new Blob([base64ToBuffer(payload.zip)]))
-        loadFilesIntoYjs(sessionId, files)
+        useFileStore.getState().loadFromMap(getSessionSnapshot(sessionId))
       } catch {
         ui.notify('Could not load the session codebase', 'error')
       }

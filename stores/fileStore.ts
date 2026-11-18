@@ -105,11 +105,17 @@ export const useFileStore = create<FileStore>()(
       deleteFile: path =>
         set(prev => {
           const fileContents = new Map(prev.fileContents)
-          fileContents.delete(path)
+          for (const key of Array.from(fileContents.keys())) {
+            if (key === path || key.startsWith(`${path}/`)) fileContents.delete(key)
+          }
 
-          const openFiles = prev.openFiles.filter(file => file !== path)
+          const openFiles = prev.openFiles.filter(
+            file => file !== path && !file.startsWith(`${path}/`)
+          )
           const activeFile =
-            prev.activeFile === path ? (openFiles[openFiles.length - 1] ?? null) : prev.activeFile
+            prev.activeFile && (prev.activeFile === path || prev.activeFile.startsWith(`${path}/`))
+              ? (openFiles[openFiles.length - 1] ?? null)
+              : prev.activeFile
 
           return {
             files: deleteFileNode(prev.files, path),

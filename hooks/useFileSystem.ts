@@ -146,13 +146,9 @@ export function useFileSystem(): UseFileSystemReturn {
           if (node.type === 'file') map[node.path] = node.content ?? ''
         }
 
-        // Replace the whole codebase, locally and in yjs.
+        // shortcut: rely on yjs CRDT diffs for peer convergence; no per-file WS fanout.
         store().loadFromMap(map)
         loadFilesIntoYjs(sessionId, map)
-
-        for (const path of Object.keys(map)) {
-          send('file:create', { sessionId, path, content: map[path] })
-        }
 
         ui.notify(`Imported ${Object.keys(map).length} files`, 'success')
       } finally {
