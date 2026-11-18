@@ -7,7 +7,7 @@ import { checkSession } from '@/lib/services/session-service'
 const paramsSchema = z.object({ id: z.string().regex(UUID_PATTERN, 'Invalid session ID') })
 
 /**
- * Public read used by the join screen. Always 200 — "not found" and
+ * Authenticated read used by the join screen. Always 200 — "not found" and
  * "found but inactive" are both valid answers, not errors.
  */
 export const GET = withoutRateLimit(async (_request, context) => {
