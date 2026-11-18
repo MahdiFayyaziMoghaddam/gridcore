@@ -60,6 +60,7 @@ function ensureObserved(sessionId: string, path: string, text: Y.Text): void {
 
   const emit = () => {
     const content = text.toString()
+    if (content.length > 0) tombstonesFor(sessionId).delete(path)
     for (const listener of listeners.get(sessionId) ?? []) {
       listener(path, content)
     }
