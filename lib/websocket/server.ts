@@ -498,7 +498,7 @@ function isValidFilePath(path: string): boolean {
 }
 
 function handleFileCreate(
-  payload: { sessionId: string; path: string; content?: string },
+  payload: { sessionId: string; path: string; content?: string; type?: 'file' | 'folder' },
   userId: string
 ): void {
   if (!requireMember(payload.sessionId, userId)) return
@@ -513,7 +513,7 @@ function handleFileCreate(
     return
   }
 
-  if (!isValidFilePath(payload.path)) {
+  if (!isSafeFilePath(payload.path) || !validateFileName(getFileName(payload.path))) {
     sendError(
       state.connections.get(userId),
       'Invalid file path',
@@ -522,10 +522,20 @@ function handleFileCreate(
     return
   }
 
+  if (payload.type === 'folder') {
+    broadcastToSession(state, payload.sessionId, 'file:created', {
+      userId,
+      path: payload.path,
+      type: 'folder',
+    })
+    return
+  }
+
   broadcastToSession(state, payload.sessionId, 'file:created', {
     userId,
     path: payload.path,
     content: payload.content ?? '',
+    type: 'file',
   })
 }
 

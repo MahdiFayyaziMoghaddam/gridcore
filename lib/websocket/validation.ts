@@ -50,6 +50,7 @@ export const FileCreateSchema = z.object({
   sessionId,
   path: z.string().min(1),
   content: z.string().optional(),
+  type: z.enum(['file', 'folder']).optional(),
 })
 
 export const FileDeleteSchema = z.object({

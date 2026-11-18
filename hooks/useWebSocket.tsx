@@ -140,6 +140,10 @@ export function WebSocketProvider({
     client.on('file:created', payload => {
       if (payload.userId === useSessionStore.getState().currentUserId) return
       const fileStore = useFileStore.getState()
+      if (payload.type === 'folder') {
+        fileStore.createFolder(payload.path)
+        return
+      }
       fileStore.createFile(payload.path, payload.content ?? '')
       yjsCreateFile(collabSessionId, payload.path, payload.content ?? '')
       if (payload.content) {

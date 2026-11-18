@@ -25,7 +25,7 @@ export type ClientEventPayloads = {
   diff: { sessionId: string; filePath: string; diff: unknown }
   cursor: { sessionId: string; filePath: string; position: WSCursor }
   status: { sessionId: string; filePath: string; status: ActivityStatus }
-  'file:create': { sessionId: string; path: string; content?: string }
+  'file:create': { sessionId: string; path: string; content?: string; type?: 'file' | 'folder' }
   'file:delete': { sessionId: string; path: string }
   'file:rename': { sessionId: string; oldPath: string; newPath: string }
   chat: { sessionId: string; content: string }
@@ -50,7 +50,7 @@ export type ServerEventPayloads = {
   cursor: { userId: string; filePath: string; position: WSCursor }
   status: { userId: string; filePath: string; status: ActivityStatus }
 
-  'file:created': { userId: string; path: string; content?: string }
+  'file:created': { userId: string; path: string; content?: string; type?: 'file' | 'folder' }
   'file:deleted': { userId: string; path: string }
   'file:renamed': { userId: string; oldPath: string; newPath: string }
 
@@ -117,5 +117,4 @@ export const WebSocketErrorCodes = {
   MULTI_TAB_BLOCKED: 'MULTI_TAB_BLOCKED',
 } as const
 
-export type WebSocketErrorCode =
-  (typeof WebSocketErrorCodes)[keyof typeof WebSocketErrorCodes]
+export type WebSocketErrorCode = (typeof WebSocketErrorCodes)[keyof typeof WebSocketErrorCodes]

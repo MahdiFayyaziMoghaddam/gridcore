@@ -69,7 +69,7 @@ export function useFileSystem(): UseFileSystemReturn {
     (path: string) => {
       if (!canCreateFile) return
       store().createFolder(path)
-      send('file:create', { sessionId, path, content: '' })
+      send('file:create', { sessionId, path, type: 'folder' })
     },
     [canCreateFile, send, sessionId]
   )
