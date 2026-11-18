@@ -34,7 +34,7 @@ export function SessionControls() {
   const permissions = usePermissions()
   const { importZip, exportZip } = useFileSystem()
   const { sessionId, send } = useWebSocket()
-  const { grantOwnership, revokeOwnership } = useSessionActions()
+  const { grantOwnership, revokeOwnership, saveSession } = useSessionActions()
 
   const users = useSessionStore(state => state.users)
   const ownerId = useSessionStore(state => state.ownerId)
@@ -84,7 +84,7 @@ export function SessionControls() {
             variant="outline"
             size="sm"
             isLoading={isSaving}
-            onClick={() => send('session:save', { sessionId })}
+            onClick={saveSession}
             title="Save session"
           >
             <Save size={14} />
@@ -223,7 +223,7 @@ export function SessionControls() {
 
           <p className="py-3 text-sm text-muted">
             {permissions.isOwner
-              ? 'Leaving closes the session for everyone unless you save first.'
+              ? 'Leaving hands the session to a temp owner if present, otherwise it closes for everyone.'
               : 'You will need the session ID to rejoin.'}
           </p>
 
@@ -235,7 +235,7 @@ export function SessionControls() {
               variant="destructive"
               onClick={() => {
                 setLeaveOpen(false)
-                // The owner leaving ends the session for everyone.
+                // The owner leaving ends the session for everyone if no temp owner is online.
                 send('leave', { sessionId })
               }}
             >
