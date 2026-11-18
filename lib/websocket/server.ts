@@ -73,6 +73,13 @@ export function handleDisconnect(userId: string, socket?: SocketLike): void {
 
   broadcastToSession(state, sessionId, 'user:left', { userId })
 
+  const ownerOnline = state.connections.has(session.ownerId)
+  const tempOnline = session.tempOwnerId ? state.connections.has(session.tempOwnerId) : false
+  if (!ownerOnline && !tempOnline) {
+    closeSession(sessionId, 'Owner offline and no temp owner')
+    return
+  }
+
   if (session.users.size === 0) {
     state.sessions.delete(sessionId)
   }
@@ -306,6 +313,13 @@ function handleLeave(payload: SessionPayload, userId: string): void {
   }
 
   broadcastToSession(state, session.id, 'user:left', { userId })
+
+  const ownerOnline = state.connections.has(session.ownerId)
+  const tempOnline = session.tempOwnerId ? state.connections.has(session.tempOwnerId) : false
+  if (!ownerOnline && !tempOnline) {
+    closeSession(session.id, 'Owner offline and no temp owner')
+    return
+  }
 
   if (session.users.size === 0) {
     state.sessions.delete(session.id)
