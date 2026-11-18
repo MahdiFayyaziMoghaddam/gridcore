@@ -117,7 +117,7 @@ export function WebSocketProvider({
     })
 
     client.on('file:created', payload => {
-      if (payload.userId === currentUserId) return
+      if (payload.userId === useSessionStore.getState().currentUserId) return
       const fileStore = useFileStore.getState()
       fileStore.createFile(payload.path, payload.content ?? '')
       yjsCreateFile(sessionId, payload.path, payload.content ?? '')
@@ -127,13 +127,13 @@ export function WebSocketProvider({
     })
 
     client.on('file:deleted', payload => {
-      if (payload.userId === currentUserId) return
+      if (payload.userId === useSessionStore.getState().currentUserId) return
       useFileStore.getState().deleteFile(payload.path)
       yjsDeleteFile(sessionId, payload.path)
     })
 
     client.on('file:renamed', payload => {
-      if (payload.userId === currentUserId) return
+      if (payload.userId === useSessionStore.getState().currentUserId) return
       const snapshot = getSessionSnapshot(sessionId)
       const affectedPaths = Object.keys(snapshot).filter(
         path => path === payload.oldPath || path.startsWith(`${payload.oldPath}/`)
@@ -159,7 +159,9 @@ export function WebSocketProvider({
     })
 
     client.on('ownership:promoted', payload => {
-      if (payload.role === 'temp_owner') session.setTempOwner(currentUserId ?? null)
+      if (payload.role === 'temp_owner') {
+        session.setTempOwner(useSessionStore.getState().currentUserId)
+      }
       ui.notify(payload.message ?? 'Ownership updated', 'info')
     })
 
@@ -184,13 +186,14 @@ export function WebSocketProvider({
     })
 
     client.on('chat', payload => {
+      const selfId = useSessionStore.getState().currentUserId
       chat.addMessage({
         id: `${Date.now()}-${payload.userId}`,
         userId: payload.userId,
         userName: payload.userName ?? session.users.get(payload.userId)?.name ?? 'Unknown',
         content: payload.content,
         timestamp: payload.timestamp,
-        isOwn: payload.userId === currentUserId,
+        isOwn: payload.userId === selfId,
       })
     })
 
