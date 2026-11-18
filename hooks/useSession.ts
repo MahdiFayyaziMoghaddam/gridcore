@@ -132,7 +132,8 @@ export function useSessionActions(): UseSessionActions {
   const leave = useCallback(() => {
     send('leave', { sessionId })
     useSessionStore.getState().clearSession()
-  }, [send, sessionId])
+    router.push(ROUTES.sessions)
+  }, [router, send, sessionId])
 
   return {
     createSession,
