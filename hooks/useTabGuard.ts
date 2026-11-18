@@ -13,8 +13,9 @@ const TAB_ID = Math.random().toString(36).slice(2)
 export function useTabGuard(): { blocked: boolean; reason: string | null } {
   useTabGuardHeartbeat()
 
-  const blocked =
-    typeof window !== 'undefined' && window.localStorage.getItem(MULTI_TAB_STORAGE_KEY) !== TAB_ID
+  const stored =
+    typeof window === 'undefined' ? null : window.localStorage.getItem(MULTI_TAB_STORAGE_KEY)
+  const blocked = stored !== null && stored !== TAB_ID
 
   return { blocked, reason: blocked ? MULTI_TAB_MESSAGE : null }
 }
