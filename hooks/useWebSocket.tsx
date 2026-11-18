@@ -1,6 +1,14 @@
 'use client'
 
-import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react'
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { useSession as useAuthSession } from 'next-auth/react'
 import { WebSocketClient } from '@/lib/websocket/client'
 import {
@@ -25,7 +33,10 @@ import type { ClientEventPayloads, ClientEventType, ServerEventType } from '@/ty
 
 interface WebSocketContextValue {
   client: WebSocketClient | null
+  /** Active network/session id (changes after session:id-changed). */
   sessionId: string
+  /** Stable local yjs/collaboration doc id for this connection. */
+  collabSessionId: string
   isConnected: boolean
   send: <T extends ClientEventType>(type: T, payload: ClientEventPayloads[T]) => boolean
 }
@@ -49,11 +60,19 @@ export function WebSocketProvider({
 }) {
   const clientRef = useRef<WebSocketClient | null>(null)
   const isConnected = useWebSocketStore(state => state.isConnected)
-  const { data: authSession } = useAuthSession()
-  const currentUserId = authSession?.user?.id
+  const [activeSessionId, setActiveSessionId] = useState(sessionId)
+  const activeSessionIdRef = useRef(sessionId)
+
+  useEffect(() => {
+    activeSessionIdRef.current = sessionId
+    setActiveSessionId(sessionId)
+  }, [sessionId])
 
   useEffect(() => {
     if (!sessionId) return
+
+    const collabSessionId = sessionId
+    const activeId = () => activeSessionIdRef.current
 
     const url = process.env.NEXT_PUBLIC_WS_URL ?? `ws://${window.location.host}/api/websocket`
     const client = new WebSocketClient({
@@ -81,6 +100,8 @@ export function WebSocketProvider({
     client.on('session:saved', () => session.setIsSaved(true))
 
     client.on('session:id-changed', payload => {
+      activeSessionIdRef.current = payload.newSessionId
+      setActiveSessionId(payload.newSessionId)
       session.setId(payload.newSessionId)
       ui.notify('Session ID changed — old invite links no longer work', 'info')
       window.history.replaceState(null, '', `/session/${payload.newSessionId}`)
@@ -120,21 +141,21 @@ export function WebSocketProvider({
       if (payload.userId === useSessionStore.getState().currentUserId) return
       const fileStore = useFileStore.getState()
       fileStore.createFile(payload.path, payload.content ?? '')
-      yjsCreateFile(sessionId, payload.path, payload.content ?? '')
+      yjsCreateFile(collabSessionId, payload.path, payload.content ?? '')
       if (payload.content) {
-        yjsSetFileContent(sessionId, payload.path, payload.content)
+        yjsSetFileContent(collabSessionId, payload.path, payload.content)
       }
     })
 
     client.on('file:deleted', payload => {
       if (payload.userId === useSessionStore.getState().currentUserId) return
       useFileStore.getState().deleteFile(payload.path)
-      yjsDeleteFile(sessionId, payload.path)
+      yjsDeleteFile(collabSessionId, payload.path)
     })
 
     client.on('file:renamed', payload => {
       if (payload.userId === useSessionStore.getState().currentUserId) return
-      const snapshot = getSessionSnapshot(sessionId)
+      const snapshot = getSessionSnapshot(collabSessionId)
       const affectedPaths = Object.keys(snapshot).filter(
         path => path === payload.oldPath || path.startsWith(`${payload.oldPath}/`)
       )
@@ -147,9 +168,9 @@ export function WebSocketProvider({
             ? payload.newPath
             : `${payload.newPath}${path.slice(payload.oldPath.length)}`
         const content = snapshot[path] ?? ''
-        yjsCreateFile(sessionId, nextPath, content)
-        yjsSetFileContent(sessionId, nextPath, content)
-        yjsDeleteFile(sessionId, path)
+        yjsCreateFile(collabSessionId, nextPath, content)
+        yjsSetFileContent(collabSessionId, nextPath, content)
+        yjsDeleteFile(collabSessionId, path)
       }
     })
 
@@ -209,7 +230,7 @@ export function WebSocketProvider({
       client.send('send:zip', {
         targetUserId: payload.targetUserId,
         zip: base64,
-        state: uint8ToBase64(encodeState(sessionId)),
+        state: uint8ToBase64(encodeState(collabSessionId)),
       })
     })
 
@@ -226,7 +247,7 @@ export function WebSocketProvider({
         }
 
         const zip = await blobToBase64(blob)
-        const response = await fetch(`/api/sessions/${sessionId}/save`, {
+        const response = await fetch(`/api/sessions/${activeId()}/save`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ zip }),
@@ -242,7 +263,7 @@ export function WebSocketProvider({
         ui.notify('Session saved', 'success')
 
         if (payload.closeAfterSave) {
-          client.send('session:close', { sessionId, save: false })
+          client.send('session:close', { sessionId: activeId(), save: false })
         }
       } finally {
         useUiStore.getState().setSaving(false)
@@ -263,13 +284,13 @@ export function WebSocketProvider({
         // The state update carries full history, so subsequent incremental
         // diffs from this peer merge correctly. Without it CRDT sync breaks.
         if (payload.state) {
-          applyRemoteUpdate(sessionId, new Uint8Array(base64ToBuffer(payload.state)))
-          useFileStore.getState().loadFromMap(getSessionSnapshot(sessionId))
+          applyRemoteUpdate(collabSessionId, new Uint8Array(base64ToBuffer(payload.state)))
+          useFileStore.getState().loadFromMap(getSessionSnapshot(collabSessionId))
         } else {
           const { extractZip } = await import('@/lib/storage/zip')
           const { loadFilesIntoYjs } = await import('@/lib/collaboration/yjs')
           const { files } = await extractZip(new Blob([base64ToBuffer(payload.zip)]))
-          loadFilesIntoYjs(sessionId, files)
+          loadFilesIntoYjs(collabSessionId, files)
           useFileStore.getState().loadFromMap(files)
         }
       } catch {
@@ -278,11 +299,11 @@ export function WebSocketProvider({
     })
 
     // CRDT sync: forward our own updates, apply everyone else's.
-    const stopUpdates = observeUpdates(sessionId, (paths, update) => {
+    const stopUpdates = observeUpdates(collabSessionId, (paths, update) => {
       const primary = paths[0]
       if (!primary) return
       client.send('diff', {
-        sessionId,
+        sessionId: activeId(),
         filePath: primary,
         diff: { paths, update: uint8ToBase64(update) },
       })
@@ -291,7 +312,7 @@ export function WebSocketProvider({
     client.on('diff', payload => {
       const diff = payload.diff as { update?: string } | undefined
       if (!diff?.update) return
-      applyRemoteUpdate(sessionId, new Uint8Array(base64ToBuffer(diff.update)))
+      applyRemoteUpdate(collabSessionId, new Uint8Array(base64ToBuffer(diff.update)))
     })
 
     ws.setConnecting()
@@ -308,11 +329,12 @@ export function WebSocketProvider({
   const value = useMemo<WebSocketContextValue>(
     () => ({
       client: clientRef.current,
-      sessionId,
+      sessionId: activeSessionId,
+      collabSessionId: sessionId,
       isConnected,
       send: (type, payload) => clientRef.current?.send(type, payload) ?? false,
     }),
-    [sessionId, isConnected]
+    [activeSessionId, sessionId, isConnected]
   )
 
   return <WebSocketContext.Provider value={value}>{children}</WebSocketContext.Provider>

@@ -39,7 +39,7 @@ export interface UseFileSystemReturn {
  * Guards follow the canonical permission model (server remains authoritative).
  */
 export function useFileSystem(): UseFileSystemReturn {
-  const { sessionId, send } = useWebSocket()
+  const { sessionId, collabSessionId, send } = useWebSocket()
   const {
     canCreateFile,
     canDeleteFile,
@@ -59,10 +59,10 @@ export function useFileSystem(): UseFileSystemReturn {
     (path: string, content = '') => {
       if (!canCreateFile) return
       store().createFile(path, content)
-      yjsCreateFile(sessionId, path, content)
+      yjsCreateFile(collabSessionId, path, content)
       send('file:create', { sessionId, path, content })
     },
-    [canCreateFile, send, sessionId]
+    [canCreateFile, collabSessionId, send, sessionId]
   )
 
   const createFolder = useCallback(
@@ -78,17 +78,17 @@ export function useFileSystem(): UseFileSystemReturn {
     (path: string) => {
       if (!canDeleteFile) return
       store().deleteFile(path)
-      yjsDeleteFile(sessionId, path)
+      yjsDeleteFile(collabSessionId, path)
       send('file:delete', { sessionId, path })
     },
-    [canDeleteFile, send, sessionId]
+    [canDeleteFile, collabSessionId, send, sessionId]
   )
 
   const rename = useCallback(
     (oldPath: string, newPath: string) => {
       if (!canRenameFile) return
 
-      const snapshot = getSessionSnapshot(sessionId)
+      const snapshot = getSessionSnapshot(collabSessionId)
       const affectedPaths = Object.keys(snapshot).filter(
         path => path === oldPath || path.startsWith(`${oldPath}/`)
       )
@@ -98,24 +98,24 @@ export function useFileSystem(): UseFileSystemReturn {
       for (const path of affectedPaths) {
         const nextPath = path === oldPath ? newPath : `${newPath}${path.slice(oldPath.length)}`
         const content = snapshot[path] ?? ''
-        yjsCreateFile(sessionId, nextPath, content)
-        yjsSetFileContent(sessionId, nextPath, content)
-        yjsDeleteFile(sessionId, path)
+        yjsCreateFile(collabSessionId, nextPath, content)
+        yjsSetFileContent(collabSessionId, nextPath, content)
+        yjsDeleteFile(collabSessionId, path)
       }
 
       send('file:rename', { sessionId, oldPath, newPath })
     },
-    [canRenameFile, send, sessionId]
+    [canRenameFile, collabSessionId, send, sessionId]
   )
 
   // Monaco edits land here: yjs holds the truth, the store mirrors it.
   const updateContent = useCallback(
     (path: string, content: string) => {
       if (!canEditContent) return
-      yjsSetFileContent(sessionId, path, content)
+      yjsSetFileContent(collabSessionId, path, content)
       store().setDirty(true)
     },
-    [canEditContent, sessionId]
+    [canEditContent, collabSessionId]
   )
 
   const importZip = useCallback(
@@ -153,7 +153,7 @@ export function useFileSystem(): UseFileSystemReturn {
 
         // Replace the whole codebase, locally and in yjs; content sync rides yjs diffs.
         store().loadFromMap(map)
-        loadFilesIntoYjs(sessionId, map)
+        loadFilesIntoYjs(collabSessionId, map)
 
         for (const path of Object.keys(map)) {
           if (!prevPaths.has(path)) send('file:create', { sessionId, path, content: map[path] })
@@ -164,7 +164,7 @@ export function useFileSystem(): UseFileSystemReturn {
         ui.setImporting(false)
       }
     },
-    [canImportFiles, send, sessionId]
+    [canImportFiles, collabSessionId, send, sessionId]
   )
 
   const exportZip = useCallback(

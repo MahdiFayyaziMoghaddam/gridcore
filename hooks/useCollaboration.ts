@@ -1,11 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef } from 'react'
-import {
-  getFileContent,
-  getSessionSnapshot,
-  observeFile,
-} from '@/lib/collaboration/yjs'
+import { getFileContent, getSessionSnapshot, observeFile } from '@/lib/collaboration/yjs'
 import { CURSOR_DEBOUNCE_MS, STATUS_DEBOUNCE_MS } from '@/lib/constants'
 import { useFileStore } from '@/stores/fileStore'
 import { useWebSocket } from './useWebSocket'
@@ -23,28 +19,28 @@ export interface UseCollaborationReturn {
  * presence onto the socket.
  */
 export function useCollaboration(): UseCollaborationReturn {
-  const { sessionId, send, isConnected } = useWebSocket()
+  const { sessionId, collabSessionId, send, isConnected } = useWebSocket()
   const updateFileContent = useFileStore(state => state.updateFileContent)
   const loadFromMap = useFileStore(state => state.loadFromMap)
 
   // fileStore is a mirror of yjs, refreshed from its observers — never from a
   // diff message (AGENTS.md §8).
   useEffect(() => {
-    if (!sessionId) return
-    return observeFile(sessionId, updateFileContent)
-  }, [sessionId, updateFileContent])
+    if (!collabSessionId) return
+    return observeFile(collabSessionId, updateFileContent)
+  }, [collabSessionId, updateFileContent])
 
   // Hydrate once per session, after the socket has delivered the owner's ZIP.
   const hydrated = useRef<string | null>(null)
   useEffect(() => {
-    if (!sessionId || !isConnected || hydrated.current === sessionId) return
+    if (!collabSessionId || !isConnected || hydrated.current === collabSessionId) return
 
-    hydrated.current = sessionId
-    const snapshot = getSessionSnapshot(sessionId)
+    hydrated.current = collabSessionId
+    const snapshot = getSessionSnapshot(collabSessionId)
     if (Object.keys(snapshot).length > 0) {
       loadFromMap(snapshot)
     }
-  }, [sessionId, isConnected, loadFromMap])
+  }, [collabSessionId, isConnected, loadFromMap])
 
   // One pending cursor per file — the newest position wins.
   const cursorTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
@@ -82,8 +78,11 @@ export function useCollaboration(): UseCollaborationReturn {
   )
 
   return {
-    getContent: useCallback((path: string) => getFileContent(sessionId, path), [sessionId]),
-    getSnapshot: useCallback(() => getSessionSnapshot(sessionId), [sessionId]),
+    getContent: useCallback(
+      (path: string) => getFileContent(collabSessionId, path),
+      [collabSessionId]
+    ),
+    getSnapshot: useCallback(() => getSessionSnapshot(collabSessionId), [collabSessionId]),
     sendCursor,
     sendStatus,
   }

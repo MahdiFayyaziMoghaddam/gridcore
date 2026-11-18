@@ -66,16 +66,11 @@ export function SessionWorkspace({ sessionId }: { sessionId: string }) {
     )
   }
 
-  const effectiveSessionId = currentSessionId ?? sessionId
+  const activeSessionId = currentSessionId ?? sessionId
 
   return (
-    <WebSocketProvider sessionId={effectiveSessionId}>
-      <WorkspaceInner
-        key={effectiveSessionId}
-        sessionId={effectiveSessionId}
-        name={sessionName}
-        activeTab={activeTab}
-      />
+    <WebSocketProvider sessionId={sessionId}>
+      <WorkspaceInner sessionId={activeSessionId} name={sessionName} activeTab={activeTab} />
     </WebSocketProvider>
   )
 }
