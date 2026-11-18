@@ -82,6 +82,12 @@ export const useFileStore = create<FileStore>()(
 
       updateFileContent: (path, content) =>
         set(prev => {
+          const existingContent = prev.fileContents.get(path)
+          const hasNode = !!findNode(prev.files, path)
+          // shortcut: skip yjs tombstones for unknown deleted paths; real empty files come via create/load.
+          if (!hasNode && existingContent === undefined && content === '') return prev
+          if (existingContent === content && hasNode) return prev
+
           const fileContents = new Map(prev.fileContents)
           fileContents.set(path, content)
           return {

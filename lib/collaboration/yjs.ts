@@ -97,7 +97,9 @@ export function observeFile(sessionId: string, listener: Listener): () => void {
 
   if (!shareWatchers.has(sessionId)) {
     const doc = getDoc(sessionId)
-    const onUpdate = () => bindAll()
+    const onUpdate = () => {
+      for (const path of getFilePaths(sessionId)) getFileText(sessionId, path)
+    }
     doc.on('update', onUpdate)
     shareWatchers.set(sessionId, () => doc.off('update', onUpdate))
   }
