@@ -153,8 +153,11 @@ export function WebSocketProvider({
 
     client.on('file:deleted', payload => {
       if (payload.userId === useSessionStore.getState().currentUserId) return
+      const paths = Object.keys(getSessionSnapshot(collabSessionId)).filter(
+        p => p === payload.path || p.startsWith(`${payload.path}/`)
+      )
       useFileStore.getState().deleteFile(payload.path)
-      yjsDeleteFile(collabSessionId, payload.path)
+      for (const p of paths.length ? paths : [payload.path]) yjsDeleteFile(collabSessionId, p)
     })
 
     client.on('file:renamed', payload => {

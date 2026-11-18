@@ -77,8 +77,11 @@ export function useFileSystem(): UseFileSystemReturn {
   const remove = useCallback(
     (path: string) => {
       if (!canDeleteFile) return
+      const paths = Object.keys(getSessionSnapshot(collabSessionId)).filter(
+        p => p === path || p.startsWith(`${path}/`)
+      )
       store().deleteFile(path)
-      yjsDeleteFile(collabSessionId, path)
+      for (const p of paths.length ? paths : [path]) yjsDeleteFile(collabSessionId, p)
       send('file:delete', { sessionId, path })
     },
     [canDeleteFile, collabSessionId, send, sessionId]
