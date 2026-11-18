@@ -146,9 +146,18 @@ export function useFileSystem(): UseFileSystemReturn {
           if (node.type === 'file') map[node.path] = node.content ?? ''
         }
 
-        // shortcut: rely on yjs CRDT diffs for peer convergence; no per-file WS fanout.
+        const prevPaths = new Set(Object.keys(store().getTreeMap()))
+        for (const path of prevPaths) {
+          if (!(path in map)) send('file:delete', { sessionId, path })
+        }
+
+        // Replace the whole codebase, locally and in yjs; content sync rides yjs diffs.
         store().loadFromMap(map)
         loadFilesIntoYjs(sessionId, map)
+
+        for (const path of Object.keys(map)) {
+          if (!prevPaths.has(path)) send('file:create', { sessionId, path, content: map[path] })
+        }
 
         ui.notify(`Imported ${Object.keys(map).length} files`, 'success')
       } finally {
@@ -170,8 +179,7 @@ export function useFileSystem(): UseFileSystemReturn {
       ui.setExporting(true)
 
       try {
-        // Build from yjs, not from the store mirror.
-        const blob = await createZip(getSessionSnapshot(sessionId))
+        const blob = await createZip(store().getTreeMap())
 
         if (blob.size === 0) {
           ui.notify('No files to export', 'error')

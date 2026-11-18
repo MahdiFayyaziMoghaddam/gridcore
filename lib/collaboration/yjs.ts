@@ -138,13 +138,10 @@ export function deleteFile(sessionId: string, path: string): void {
   const key = fileKey(path)
   const doc = getDoc(sessionId)
   if (!doc.share.has(key)) return
-
   const text = doc.getText(key)
   doc.transact(() => {
     text.delete(0, text.length)
   })
-  doc.share.delete(key)
-  observedFor(sessionId).delete(text)
 }
 
 /** Full path -> content snapshot. This is what the owner packages into a ZIP. */
@@ -165,12 +162,9 @@ export function loadFilesIntoYjs(sessionId: string, files: Record<string, string
   doc.transact(() => {
     for (const path of getFilePaths(sessionId)) {
       if (!(path in files)) {
-        const key = fileKey(path)
-        const text = doc.getText(key)
+        const text = doc.getText(fileKey(path))
         ensureObserved(sessionId, path, text)
         text.delete(0, text.length)
-        doc.share.delete(key)
-        observedFor(sessionId).delete(text)
       }
     }
 

@@ -77,11 +77,11 @@ export function useSessionActions(): UseSessionActions {
 
     try {
       const { createZip } = await import('@/lib/storage/zip')
-      const { getSessionSnapshot } = await import('@/lib/collaboration/yjs')
       const { downloadBlob } = await import('@/lib/file-system/import')
       const { MAX_ZIP_SIZE } = await import('@/lib/constants')
+      const { useFileStore } = await import('@/stores/fileStore')
 
-      const blob = await createZip(getSessionSnapshot(sessionId))
+      const blob = await createZip(useFileStore.getState().getTreeMap())
 
       if (blob.size === 0) {
         ui.notify('No files to export', 'error')

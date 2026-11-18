@@ -14,7 +14,7 @@ import {
   setFileContent as yjsSetFileContent,
 } from '@/lib/collaboration/yjs'
 import { createZip } from '@/lib/storage/zip'
-import { MAX_ZIP_SIZE } from '@/lib/constants'
+import { MAX_ZIP_SIZE, MULTI_TAB_MESSAGE } from '@/lib/constants'
 import { useWebSocketStore } from '@/stores/wsStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { useEditorStore } from '@/stores/editorStore'
@@ -196,7 +196,7 @@ export function WebSocketProvider({
 
     // New joiner asked for the codebase — we are the one holding it.
     client.on('request:zip', async payload => {
-      const snapshot = getSessionSnapshot(sessionId)
+      const snapshot = useFileStore.getState().getTreeMap()
       const blob = await createZip(snapshot)
       if (blob.size > MAX_ZIP_SIZE) {
         ui.notify('Session is too large to hand off', 'error')
@@ -214,7 +214,7 @@ export function WebSocketProvider({
       const uiState = useUiStore.getState()
       uiState.setSaving(true)
       try {
-        const snapshot = getSessionSnapshot(sessionId)
+        const snapshot = useFileStore.getState().getTreeMap()
         const blob = await createZip(snapshot)
 
         if (blob.size > MAX_ZIP_SIZE) {
@@ -249,6 +249,9 @@ export function WebSocketProvider({
     client.on('error', payload => {
       ui.notify(payload.error, 'error')
       useWebSocketStore.getState().setError(payload.error)
+      if (payload.code === 'MULTI_TAB_BLOCKED' || payload.error === MULTI_TAB_MESSAGE) {
+        client.disconnect()
+      }
     })
 
     // New joiner received the codebase — hydrate from the shared yjs state.
@@ -258,13 +261,14 @@ export function WebSocketProvider({
         // diffs from this peer merge correctly. Without it CRDT sync breaks.
         if (payload.state) {
           applyRemoteUpdate(sessionId, new Uint8Array(base64ToBuffer(payload.state)))
+          useFileStore.getState().loadFromMap(getSessionSnapshot(sessionId))
         } else {
           const { extractZip } = await import('@/lib/storage/zip')
           const { loadFilesIntoYjs } = await import('@/lib/collaboration/yjs')
           const { files } = await extractZip(new Blob([base64ToBuffer(payload.zip)]))
           loadFilesIntoYjs(sessionId, files)
+          useFileStore.getState().loadFromMap(files)
         }
-        useFileStore.getState().loadFromMap(getSessionSnapshot(sessionId))
       } catch {
         ui.notify('Could not load the session codebase', 'error')
       }
