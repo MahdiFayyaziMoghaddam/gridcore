@@ -21,10 +21,29 @@ import type { ClientMessage } from '@/types/websocket'
 // ─────────────────────────────────────────────────────────────
 
 export function handleConnect(userId: string, socket: SocketLike): void {
+  const existing = state.connections.get(userId)
+  if (existing && existing.readyState === SOCKET_OPEN) {
+    socket.send(
+      JSON.stringify({
+        type: 'error',
+        payload: {
+          error: 'You already have GridCore open',
+          code: WebSocketErrorCodes.MULTI_TAB_BLOCKED,
+        },
+        timestamp: Date.now(),
+      })
+    )
+    socket.close?.(4001, 'You already have GridCore open')
+    return
+  }
+
   state.connections.set(userId, socket)
 }
 
-export function handleDisconnect(userId: string): void {
+export function handleDisconnect(userId: string, socket?: SocketLike): void {
+  const current = state.connections.get(userId)
+  if (socket && current && current !== socket) return
+
   const sessionId = state.sessionMap.get(userId)
   state.connections.delete(userId)
   state.chatCooldowns.delete(userId)
@@ -251,14 +270,16 @@ function handleJoin(payload: SessionPayload, userId: string): void {
     tempOwnerId: session.tempOwnerId,
     isSaved: session.isSaved,
     createdAt: session.createdAt,
-    users: [],
+    users: Array.from(session.users)
+      .filter(id => state.connections.has(id))
+      .map(id => ({ id, name: id, isOnline: true })),
   })
 
   broadcastToSession(
     state,
     session.id,
     'user:joined',
-    { userId },
+    { userId, userName: userId },
     [userId] // sender already knows
   )
 }

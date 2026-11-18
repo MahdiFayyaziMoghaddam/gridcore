@@ -89,7 +89,7 @@ export async function GET(request: Request): Promise<Response> {
 
   const onClose = (): void => {
     open = false
-    handleDisconnect(session.user.id)
+    handleDisconnect(session.user.id, wrapper)
   }
 
   if (raw.on) {
