@@ -34,7 +34,7 @@ export function SessionControls() {
   const permissions = usePermissions()
   const { importZip, exportZip } = useFileSystem()
   const { sessionId, send } = useWebSocket()
-  const { grantOwnership, revokeOwnership, saveSession } = useSessionActions()
+  const { grantOwnership, revokeOwnership, saveSession, leave } = useSessionActions()
 
   const users = useSessionStore(state => state.users)
   const ownerId = useSessionStore(state => state.ownerId)
@@ -235,8 +235,7 @@ export function SessionControls() {
               variant="destructive"
               onClick={() => {
                 setLeaveOpen(false)
-                // The owner leaving ends the session for everyone if no temp owner is online.
-                send('leave', { sessionId })
+                leave()
               }}
             >
               <LogOut size={14} /> Leave
