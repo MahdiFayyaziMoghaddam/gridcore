@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { useSession as useAuthSession } from 'next-auth/react'
+import { destroyDocument } from '@/lib/collaboration/yjs'
 import { ChatPanel } from '@/components/chat/ChatPanel'
 import { UserList } from '@/components/collaboration/UserList'
 import { Editor } from '@/components/editor/Editor'
@@ -47,11 +48,12 @@ export function SessionWorkspace({ sessionId }: { sessionId: string }) {
 
   useEffect(() => {
     return () => {
+      destroyDocument(sessionId)
       useFileStore.getState().reset()
       useChatStore.getState().clearMessages()
       useEditorStore.getState().clearAll()
     }
-  }, [])
+  }, [sessionId])
 
   const { blocked, reason } = useTabGuard()
 
